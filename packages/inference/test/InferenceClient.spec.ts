@@ -22,7 +22,7 @@ if (!env.HF_TOKEN) {
 	console.warn("Set HF_TOKEN in the env to run the tests for better rate limits");
 }
 
-describe.skip("InferenceClient", () => {
+describe("InferenceClient", () => {
 	// Individual tests can be ran without providing an api key, however running all tests without an api key will result in rate limiting error.
 
 	describe("backward compatibility", () => {
@@ -1974,6 +1974,91 @@ describe.skip("InferenceClient", () => {
 				// Verify we got a meaningful response
 				expect(fullResponse).toBeTruthy();
 				expect(fullResponse).toContain("D");
+			});
+		},
+		TIMEOUT
+	);
+		describe.concurrent(
+		"CentML",
+		() => {
+			const client = new InferenceClient(env.HF_CENTML_KEY ?? "dummy");
+
+			HARDCODED_MODEL_INFERENCE_MAPPING["centml"] = {
+				"meta-llama/Llama-3.2-3B-Instruct": {
+					hfModelId: "meta-llama/Llama-3.2-3B-Instruct",
+					providerId: "meta-llama/Llama-3.2-3B-Instruct",
+					status: "live",
+					task: "conversational",
+				},
+			};
+
+			describe("chat completions", () => {
+				it("basic chat completion", async () => {
+					const res = await client.chatCompletion({
+						model: "meta-llama/Llama-3.2-3B-Instruct",
+						provider: "centml",
+						messages: [{ role: "user", content: "Complete this sentence with words, one plus one is equal " }],
+					});
+					if (res.choices && res.choices.length > 0) {
+						const completion = res.choices[0].message?.content;
+						expect(completion).toContain("two");
+					}
+				});
+
+				it("chat completion with multiple messages", async () => {
+					const res = await client.chatCompletion({
+						model: "meta-llama/Llama-3.2-3B-Instruct",
+						provider: "centml",
+						messages: [
+							{ role: "system", content: "You are a helpful assistant." },
+							{ role: "user", content: "What is 2+2?" },
+							{ role: "assistant", content: "The answer is 4." },
+							{ role: "user", content: "What is 3+3?" },
+						],
+					});
+					if (res.choices && res.choices.length > 0) {
+						const completion = res.choices[0].message?.content;
+						expect(completion).toContain("6");
+					}
+				});
+
+				it("chat completion with parameters", async () => {
+					const res = await client.chatCompletion({
+						model: "meta-llama/Llama-3.2-3B-Instruct",
+						provider: "centml",
+						messages: [{ role: "user", content: "Write a short poem about AI" }],
+						temperature: 0.7,
+						max_tokens: 100,
+						top_p: 0.9,
+					});
+					if (res.choices && res.choices.length > 0 && res.choices[0].message?.content) {
+						const completion = res.choices[0].message.content;
+						expect(completion).toBeTruthy();
+						expect(completion.length).toBeGreaterThan(0);
+					}
+				});
+
+				it("chat completion stream", async () => {
+					const stream = client.chatCompletionStream({
+						model: "meta-llama/Llama-3.2-3B-Instruct",
+						provider: "centml",
+						messages: [{ role: "user", content: "Say 'this is a test'" }],
+						stream: true,
+					}) as AsyncGenerator<ChatCompletionStreamOutput>;
+
+					let fullResponse = "";
+					for await (const chunk of stream) {
+						if (chunk.choices && chunk.choices.length > 0) {
+							const content = chunk.choices[0].delta?.content;
+							if (content) {
+								fullResponse += content;
+							}
+						}
+					}
+
+					expect(fullResponse).toBeTruthy();
+					expect(fullResponse.length).toBeGreaterThan(0);
+				});
 			});
 		},
 		TIMEOUT
